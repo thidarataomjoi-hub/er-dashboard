@@ -156,6 +156,7 @@ def make_donut(
     name: str,
     title: str,
     color_scale: alt.Scale | None = None,
+    legend_columns: int = 2,
 ) -> alt.Chart:
     return (
         alt.Chart(frame)
@@ -172,7 +173,9 @@ def make_donut(
                 legend=alt.Legend(
                     title=None,
                     orient="bottom",
-                    columns=2,
+                    columns=legend_columns,
+                    columnPadding=14,
+                    rowPadding=5,
                     labelLimit=160,
                     symbolType="circle",
                 ),
@@ -281,8 +284,9 @@ st.markdown(
       color: #203653 !important;
     }
     [data-testid="stSidebar"] [data-baseweb="select"] input::placeholder {
-      color: #526981 !important;
-      opacity: 1;
+      color: #203653 !important;
+      -webkit-text-fill-color: #203653 !important;
+      opacity: 1 !important;
     }
     [data-testid="stSidebar"] [data-baseweb="tag"] {
       background: #176ca5 !important;
@@ -303,20 +307,32 @@ st.markdown(
       background: #e8f2fa !important;
       color: #123b5c !important;
     }
-    [data-testid="stSidebar"] [data-testid="stButton"] > button {
+    [data-testid="stSidebar"] .st-key-sidebar-navigation [data-testid="stButton"] {
+      margin: 0 0 .35rem;
+    }
+    [data-testid="stSidebar"] .st-key-sidebar-navigation [data-testid="stButton"] > button {
+      width: 100%;
+      height: 2.65rem;
+      min-height: 2.65rem;
+      max-height: 2.65rem;
       justify-content: flex-start;
+      text-align: left;
       border: 1px solid transparent;
       background: transparent;
       color: #eaf3fc;
       padding: .55rem .65rem;
-      min-height: 2.45rem;
     }
-    [data-testid="stSidebar"] [data-testid="stButton"] > button:hover {
+    [data-testid="stSidebar"] .st-key-sidebar-navigation [data-testid="stButton"] > button > div {
+      width: 100%;
+      justify-content: flex-start;
+      text-align: left;
+    }
+    [data-testid="stSidebar"] .st-key-sidebar-navigation [data-testid="stButton"] > button:hover {
       background: #2b4260;
       border-color: #48617e;
       color: white;
     }
-    [data-testid="stSidebar"] [data-testid="stButton"] > button[kind="primary"] {
+    [data-testid="stSidebar"] .st-key-sidebar-navigation [data-testid="stButton"] > button[kind="primary"] {
       background: #0c638f;
       border-color: #1b95c5;
       color: white;
@@ -428,17 +444,18 @@ with st.sidebar:
     ]
     if "active_page" not in st.session_state:
         st.session_state.active_page = "หน้าแรก (ER Dashboard)"
-    for page_value, page_label in pages:
-        if st.button(
-            page_label,
-            key=f"nav_{page_value}",
-            type="primary"
-            if st.session_state.active_page == page_value
-            else "secondary",
-            width="stretch",
-        ):
-            st.session_state.active_page = page_value
-            st.rerun()
+    with st.container(key="sidebar-navigation"):
+        for page_value, page_label in pages:
+            if st.button(
+                page_label,
+                key=f"nav_{page_value}",
+                type="primary"
+                if st.session_state.active_page == page_value
+                else "secondary",
+                width="stretch",
+            ):
+                st.session_state.active_page = page_value
+                st.rerun()
     page = st.session_state.active_page
     st.divider()
     st.markdown("#### กรองข้อมูล")
@@ -732,6 +749,7 @@ if page == "หน้าแรก (ER Dashboard)":
                     "ระดับ",
                     "ระดับคัดกรอง",
                     color_scale=triage_color_scale(),
+                    legend_columns=3,
                 ),
                 width="stretch",
             )
