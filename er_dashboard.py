@@ -188,6 +188,16 @@ st.markdown(
     [data-testid="stSidebar"] [data-baseweb="select"] *,
     [data-testid="stSidebar"] [data-baseweb="input"] input {
       color: #203653 !important;
+      -webkit-text-fill-color: #203653 !important;
+      opacity: 1 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"],
+    [data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] *,
+    [data-testid="stSidebar"] [data-testid="stDateInput"] input,
+    [data-testid="stSidebar"] [data-testid="stDateInput"] input:disabled {
+      color: #203653 !important;
+      -webkit-text-fill-color: #203653 !important;
+      opacity: 1 !important;
     }
     [data-testid="stSidebar"] [data-testid="stDateInput"] [data-baseweb="input"],
     [data-testid="stSidebar"] [data-testid="stDateInput"] [data-baseweb="input"] > div {
@@ -1379,6 +1389,74 @@ elif page == "เวลารอคอย":
             f"{long_wait_count:,} ({long_wait_count / len(waits) * 100:.1f}%)",
         )
 
+        wait_records = filtered.loc[waits.index].assign(wait_min=waits)
+        shift_summary = (
+            wait_records.groupby("arrival_shift", observed=True)
+            .agg(
+                wait_mean=("wait_min", "mean"),
+                wait_median=("wait_min", "median"),
+                wait_p90=("wait_min", lambda values: values.quantile(0.9)),
+                visits=("wait_min", "size"),
+            )
+            .reset_index()
+        )
+        triage_summary = (
+            wait_records.groupby(["triage_level", "triage_label"], observed=True)
+            .agg(
+                wait_mean=("wait_min", "mean"),
+                wait_median=("wait_min", "median"),
+                visits=("wait_min", "size"),
+            )
+            .reset_index()
+        )
+
+        with st.container(border=True):
+            st.subheader("จุดที่ใช้เวลารอนานที่สุด และเหตุผลที่ข้อมูลบอกได้")
+            st.write(
+                "ไฟล์วัดเวลารอได้เพียงขั้นตอน **คัดกรอง → พบแพทย์** "
+                "จึงยังเปรียบเทียบไม่ได้ว่าขั้นตอนอื่น เช่น ตรวจรักษา หรือรอจำหน่าย "
+                "ใช้เวลานานกว่าเพียงใด"
+            )
+            peak_columns = st.columns(2)
+            if not shift_summary.empty:
+                peak_shift = shift_summary.loc[shift_summary["wait_mean"].idxmax()]
+                peak_columns[0].metric(
+                    "ช่วงเวลาที่รอเฉลี่ยนานที่สุด",
+                    f"{peak_shift['arrival_shift']}",
+                    f"{peak_shift['wait_mean']:.1f} นาที · {peak_shift['visits']:,} visits",
+                )
+            else:
+                peak_columns[0].metric("ช่วงเวลาที่รอเฉลี่ยนานที่สุด", "ไม่มีข้อมูล")
+            if not triage_summary.empty:
+                peak_triage = triage_summary.loc[triage_summary["wait_mean"].idxmax()]
+                peak_columns[1].metric(
+                    "ระดับคัดกรองที่รอเฉลี่ยนานที่สุด",
+                    str(peak_triage["triage_label"]),
+                    f"{peak_triage['wait_mean']:.1f} นาที · {peak_triage['visits']:,} visits",
+                )
+            else:
+                peak_columns[1].metric("ระดับคัดกรองที่รอเฉลี่ยนานที่สุด", "ไม่มีข้อมูล")
+
+            if not shift_summary.empty:
+                busiest_shift = shift_summary.loc[shift_summary["visits"].idxmax()]
+                if busiest_shift["arrival_shift"] == peak_shift["arrival_shift"]:
+                    st.write(
+                        f"**ข้อสังเกต:** {peak_shift['arrival_shift']} เป็นทั้งช่วงที่เวลารอเฉลี่ยสูงสุด "
+                        f"และมี visits มากที่สุด ({peak_shift['visits']:,} ราย) "
+                        "ปริมาณผู้มารับบริการอาจเป็นปัจจัยที่ควรตรวจสอบเพิ่มเติม"
+                    )
+                else:
+                    st.write(
+                        f"**ข้อสังเกต:** ช่วงที่เวลารอเฉลี่ยสูงสุดคือ {peak_shift['arrival_shift']} "
+                        f"แต่ช่วงที่มี visits มากที่สุดคือ {busiest_shift['arrival_shift']} "
+                        "ดังนั้นจำนวน visits เพียงอย่างเดียวอธิบายช่วงเวลารอสูงสุดไม่ได้"
+                    )
+            st.caption(
+                "เป็นความสัมพันธ์ที่พบในข้อมูล ไม่ใช่ข้อสรุปเชิงเหตุและผล "
+                "ไฟล์นี้ไม่มีข้อมูลจำนวนบุคลากร ความยาวคิว ความพร้อมของแพทย์ "
+                "หรือความหนาแน่นผู้ป่วย จึงระบุสาเหตุที่แท้จริงไม่ได้"
+            )
+
         monthly = filtered.loc[waits.index].copy()
         monthly["wait_min"] = waits
         monthly["เดือน"] = monthly["arrival_date"].dt.to_period("M").dt.to_timestamp()
@@ -1411,18 +1489,6 @@ elif page == "เวลารอคอย":
             st.altair_chart(trend_chart, width="stretch")
 
         left, right = st.columns(2)
-        shift_summary = (
-            filtered.loc[waits.index]
-            .assign(wait_min=waits)
-            .groupby("arrival_shift", observed=True)
-            .agg(
-                wait_mean=("wait_min", "mean"),
-                wait_median=("wait_min", "median"),
-                wait_p90=("wait_min", lambda values: values.quantile(0.9)),
-                visits=("wait_min", "size"),
-            )
-            .reset_index()
-        )
         with left:
             with st.container(border=True):
                 st.subheader("เวลารอแยกตาม Shift")
@@ -1444,17 +1510,6 @@ elif page == "เวลารอคอย":
                 )
                 st.altair_chart(shift_chart, width="stretch")
 
-        triage_summary = (
-            filtered.loc[waits.index]
-            .assign(wait_min=waits)
-            .groupby(["triage_level", "triage_label"], observed=True)
-            .agg(
-                wait_mean=("wait_min", "mean"),
-                wait_median=("wait_min", "median"),
-                visits=("wait_min", "size"),
-            )
-            .reset_index()
-        )
         with right:
             with st.container(border=True):
                 st.subheader("เวลารอตามระดับคัดกรอง")
