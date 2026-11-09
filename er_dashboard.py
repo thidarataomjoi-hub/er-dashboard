@@ -4,6 +4,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from urllib.error import URLError
+from urllib.parse import urlsplit
 from urllib.request import urlopen
 
 import altair as alt
@@ -11,6 +12,8 @@ import pandas as pd
 import pydeck as pdk
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
+
+from er_security import escape_html
 
 
 st.set_page_config(
@@ -113,12 +116,15 @@ def resolve_data_file() -> Path | None:
     if not data_url:
         return None
 
+    if urlsplit(data_url).scheme.lower() != "https":
+        raise RuntimeError("ER_DATA_URL must use HTTPS.")
+
     url_hash = hashlib.sha256(data_url.encode("utf-8")).hexdigest()[:16]
     cached_file = Path(tempfile.gettempdir()) / f"er_dashboard_{url_hash}.csv.gz"
     if cached_file.is_file():
         return cached_file
 
-    partial_file = cached_file.with_suffix(".csv.gz.part")
+    partial_file = cached_file.with_name(f"{cached_file.name}.part")
     try:
         with urlopen(data_url, timeout=60) as response:
             with partial_file.open("wb") as downloaded:
@@ -126,7 +132,9 @@ def resolve_data_file() -> Path | None:
         partial_file.replace(cached_file)
     except (OSError, URLError) as exc:
         partial_file.unlink(missing_ok=True)
-        raise RuntimeError(f"ดาวน์โหลดไฟล์ข้อมูลจาก ER_DATA_URL ไม่สำเร็จ: {exc}") from exc
+        raise RuntimeError(
+            "ดาวน์โหลด ER_DATA_URL ไม่สำเร็จ กรุณาตรวจสอบ HTTPS URL และสิทธิ์เข้าถึง"
+        ) from exc
     return cached_file
 
 
@@ -136,6 +144,54 @@ def humanize(column: str) -> str:
 
 def count_label(value: int) -> str:
     return f"{value:,}"
+
+
+def require_authorized_user() -> None:
+    try:
+        auth_settings = st.secrets["auth"]
+        authorization = st.secrets["authorization"]
+    except (KeyError, StreamlitSecretNotFoundError):
+        st.error(
+            "Authentication is not configured. Set the [auth] and [authorization] "
+            "sections in Streamlit Secrets before using this dashboard."
+        )
+        st.stop()
+
+    required_auth_settings = (
+        "client_id",
+        "client_secret",
+        "cookie_secret",
+        "redirect_uri",
+        "server_metadata_url",
+    )
+    if any(not auth_settings.get(key) for key in required_auth_settings):
+        st.error("Streamlit OIDC settings are incomplete. Check the [auth] section.")
+        st.stop()
+
+    allowed_emails = authorization.get("allowed_emails")
+    if (
+        not isinstance(allowed_emails, list)
+        or not allowed_emails
+        or any(not isinstance(email, str) or not email.strip() for email in allowed_emails)
+    ):
+        st.error(
+            "Access is disabled until [authorization].allowed_emails contains "
+            "at least one approved email address."
+        )
+        st.stop()
+
+    if not st.user.is_logged_in:
+        if st.button("เข้าสู่ระบบ"):
+            st.login()
+        st.stop()
+
+    user_email = st.user.get("email")
+    approved_emails = {email.strip().casefold() for email in allowed_emails}
+    if not isinstance(user_email, str) or user_email.strip().casefold() not in approved_emails:
+        st.error("บัญชีนี้ไม่ได้รับอนุญาตให้เข้าถึงแดชบอร์ด")
+        if st.button("ออกจากระบบ"):
+            st.logout()
+        st.stop()
 
 
 def set_filter_selection(state_key: str, values: list) -> None:
@@ -167,6 +223,8 @@ def make_donut(frame: pd.DataFrame, name: str, title: str) -> alt.Chart:
         .properties(height=280)
     )
 
+
+require_authorized_user()
 
 st.markdown(
     """
@@ -443,6 +501,9 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.divider()
+    if st.button("ออกจากระบบ", key="logout"):
+        st.logout()
+        st.stop()
     st.caption("ภาพรวม & การวิเคราะห์")
     pages = [
         ("หน้าแรก (ER Dashboard)", "📊  หน้าแรก (ER Dashboard)"),
@@ -938,6 +999,18 @@ elif page == "แผนที่บริการ":
         )
         city_map = city_map.merge(hospital_summary, on="city", how="left")
         city_map = city_map.merge(diagnosis_summary, on="city", how="left")
+        for source_column, tooltip_column in (
+            ("city", "city_tooltip"),
+            ("โรงพยาบาลที่พบมากสุด", "hospital_type_tooltip"),
+            ("รหัสโรคเด่น", "diagnosis_code_tooltip"),
+            ("ชื่อโรคเด่น", "diagnosis_name_tooltip"),
+        ):
+            city_map[tooltip_column] = (
+                city_map[source_column]
+                .astype("string")
+                .fillna("ไม่ระบุ")
+                .map(escape_html)
+            )
         city_map["radius"] = (
             6000
             + 24000
@@ -1002,11 +1075,11 @@ elif page == "แผนที่บริการ":
                     map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
                     tooltip={
                         "html": (
-                            "<b>{city}</b><br/>"
-                            "ประเภทโรงพยาบาลที่พบมากสุด: {โรงพยาบาลที่พบมากสุด}<br/>"
+                            "<b>{city_tooltip}</b><br/>"
+                            "ประเภทโรงพยาบาลที่พบมากสุด: {hospital_type_tooltip}<br/>"
                             "Visits ของประเภทนี้: {Visits ของประเภทโรงพยาบาล}<br/>"
                             "จำนวน Visits ทั้งเมือง: {visits}<br/>"
-                            "โรคที่พบบ่อย: {รหัสโรคเด่น} · {ชื่อโรคเด่น}<br/>"
+                            "โรคที่พบบ่อย: {diagnosis_code_tooltip} · {diagnosis_name_tooltip}<br/>"
                             "Visits ของโรคเด่น: {Visits ของโรคเด่น}<br/>"
                             "ผลลัพธ์ไม่พึงประสงค์: {adverse_rate}%<br/>"
                             "เวลารอเฉลี่ย: {wait_mean} นาที"
@@ -1147,8 +1220,8 @@ elif page == "วิเคราะห์การวินิจฉัย":
               <div style="font-size:.82rem;color:#74869a;margin-bottom:10px">อันดับ 1 ที่พบมากที่สุด</div>
               <div style="font-size:1.04rem;color:#172f4a;font-weight:750">
                 <span style="display:inline-block;background:#fff2d8;color:#b45309;
-                padding:3px 8px;border-radius:6px;margin-right:6px">{top_diagnosis['รหัสโรค']}</span>
-                {top_diagnosis['ชื่อการวินิจฉัย']}
+                padding:3px 8px;border-radius:6px;margin-right:6px">{escape_html(top_diagnosis['รหัสโรค'])}</span>
+                {escape_html(top_diagnosis['ชื่อการวินิจฉัย'])}
               </div>
               <div style="font-size:.78rem;color:#74869a;margin-top:8px">
                 {int(top_diagnosis['visits']):,} ครั้งในช่วงข้อมูลที่เลือก
