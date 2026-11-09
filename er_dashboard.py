@@ -23,6 +23,31 @@ st.set_page_config(
 APP_DIR = Path(__file__).resolve().parent
 LOCAL_CSV = APP_DIR / "cleaned_train_supp.csv"
 LOCAL_CSV_GZ = APP_DIR / "cleaned_train_supp.csv.gz"
+CLOUD_DATA_COLUMNS = (
+    "encounter_id",
+    "arrival_year",
+    "arrival_month",
+    "arrival_day",
+    "arrival_hour",
+    "city",
+    "latitude",
+    "longitude",
+    "hospital_type",
+    "triage_level",
+    "triage_label",
+    "disposition",
+    "age",
+    "age_group",
+    "ed_los_minutes",
+    "adverse_outcome",
+    "readmission_30d",
+    "primary_icd10_code",
+    "primary_diagnosis",
+    "triage_to_physician_min",
+    "gender",
+    "arrival_mode",
+    "news2_score",
+)
 TRIAGE_LABELS = {
     1: "Level 1 · วิกฤต",
     2: "Level 2 · เร่งด่วนมาก",
@@ -43,9 +68,34 @@ SHIFT_LABELS = ["Morning (06:00–13:59)", "Afternoon (14:00–21:59)", "Night (
 
 
 @st.cache_resource(show_spinner="กำลังโหลดข้อมูลจาก CSV...")
-def load_data(file_path: str, modified_time: float) -> pd.DataFrame:
+def load_data(
+    file_path: str,
+    modified_time: float,
+    usecols: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
     del modified_time
-    return pd.read_csv(file_path, dtype_backend="pyarrow", low_memory=False)
+    data = pd.read_csv(
+        file_path,
+        dtype_backend="pyarrow",
+        low_memory=False,
+        usecols=list(usecols) if usecols else None,
+    )
+    if usecols:
+        for column in (
+            "encounter_id",
+            "city",
+            "hospital_type",
+            "triage_label",
+            "disposition",
+            "age_group",
+            "primary_icd10_code",
+            "primary_diagnosis",
+            "gender",
+            "arrival_mode",
+        ):
+            if column in data.columns:
+                data[column] = data[column].astype("category")
+    return data
 
 
 def resolve_data_file() -> Path | None:
@@ -285,8 +335,14 @@ if DATA_FILE is None:
     )
     st.stop()
 
+REMOTE_DATA = DATA_FILE not in (LOCAL_CSV, LOCAL_CSV_GZ)
+
 try:
-    data = load_data(str(DATA_FILE), DATA_FILE.stat().st_mtime)
+    data = load_data(
+        str(DATA_FILE),
+        DATA_FILE.stat().st_mtime,
+        usecols=CLOUD_DATA_COLUMNS if REMOTE_DATA else None,
+    )
 except (OSError, pd.errors.ParserError, UnicodeDecodeError, ValueError) as exc:
     st.error(f"อ่านไฟล์ CSV ไม่สำเร็จ: {exc}")
     st.stop()
@@ -559,7 +615,10 @@ with st.sidebar:
         "Shift: Morning 06–13:59 · Afternoon 14–21:59 · Night 22–05:59"
     )
     st.divider()
-    st.caption(f"ข้อมูล {len(data):,} แถว · {len(data.columns) - 1} ฟิลด์")
+    st.caption(
+        f"ข้อมูล {len(data):,} แถว · {len(data.columns)} ฟิลด์"
+        + (" · โหมด Cloud โหลดเฉพาะฟิลด์หลักเพื่อลด RAM" if REMOTE_DATA else "")
+    )
 
 filtered = data[
     data["arrival_date"].between(
