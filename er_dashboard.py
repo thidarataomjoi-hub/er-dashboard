@@ -174,7 +174,17 @@ st.markdown(
       background: var(--navy) !important;
       border-right: 1px solid #d5deea;
     }
-    [data-testid="stSidebar"] * { color: #eaf3fc !important; }
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"],
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] h4,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] label {
+      color: #eaf3fc !important;
+    }
     [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
       color: #a9bfd5 !important;
     }
