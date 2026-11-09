@@ -10,6 +10,7 @@ import altair as alt
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
 
 
 st.set_page_config(
@@ -53,9 +54,12 @@ def resolve_data_file() -> Path | None:
     if LOCAL_CSV_GZ.is_file():
         return LOCAL_CSV_GZ
 
-    data_url = str(
-        st.secrets.get("ER_DATA_URL", os.environ.get("ER_DATA_URL", ""))
-    ).strip()
+    data_url = os.environ.get("ER_DATA_URL", "").strip()
+    if not data_url:
+        try:
+            data_url = str(st.secrets.get("ER_DATA_URL", "")).strip()
+        except StreamlitSecretNotFoundError:
+            data_url = ""
     if not data_url:
         return None
 
