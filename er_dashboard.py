@@ -39,6 +39,33 @@ TRIAGE_LABELS = {
     4: "Level 4 · ไม่เร่งด่วน",
     5: "Level 5 · ทั่วไป",
 }
+TRIAGE_COLORS = {
+    1: "#B42318",
+    2: "#C2410C",
+    3: "#A16207",
+    4: "#047857",
+    5: "#1D4ED8",
+}
+TRIAGE_MARKERS = {
+    1: "🟥",
+    2: "🟧",
+    3: "🟨",
+    4: "🟩",
+    5: "🟦",
+}
+TRIAGE_COLOR_DOMAIN = [TRIAGE_LABELS[level] for level in TRIAGE_LABELS]
+TRIAGE_COLOR_RANGE = [TRIAGE_COLORS[level] for level in TRIAGE_COLORS]
+COLOR_PRIMARY = "#079BD5"
+COLOR_SUCCESS = "#12B886"
+COLOR_WARNING = "#F59E0B"
+COLOR_DANGER = "#E05252"
+COLOR_PURPLE = "#8B69E8"
+COLOR_NEUTRAL = "#94A3B8"
+COLOR_INK = "#172F4A"
+COLOR_MUTED = "#5D6E80"
+COLOR_BORDER = "#E4EBF3"
+COLOR_WARNING_DARK = "#B45309"
+COLOR_WARNING_BACKGROUND = "#FFF2D8"
 DISPOSITION_LABELS = {
     "Discharged Home": "กลับบ้าน",
     "Admitted to Ward": "รับไว้รักษาใน Ward",
@@ -47,7 +74,13 @@ DISPOSITION_LABELS = {
     "Transferred Out": "ส่งต่อ",
     "Left AMA": "ออกจากโรงพยาบาลโดยไม่สมัครใจรักษาต่อ",
 }
-CHART_COLORS = ["#26a9e0", "#12b886", "#ff9f43", "#f05270", "#8b69e8"]
+CHART_COLORS = [
+    COLOR_PRIMARY,
+    COLOR_SUCCESS,
+    COLOR_WARNING,
+    COLOR_DANGER,
+    COLOR_PURPLE,
+]
 
 
 @st.cache_resource(show_spinner="กำลังโหลดข้อมูลจาก CSV...")
@@ -105,7 +138,25 @@ def set_filter_selection(state_key: str, values: list) -> None:
     st.session_state[state_key] = values
 
 
-def make_donut(frame: pd.DataFrame, name: str, title: str) -> alt.Chart:
+def triage_display_label(level: object, fallback: object = None) -> str:
+    try:
+        return TRIAGE_LABELS.get(
+            int(level), str(fallback if fallback is not None else level)
+        )
+    except (TypeError, ValueError):
+        return str(fallback if fallback is not None else level)
+
+
+def triage_color_scale() -> alt.Scale:
+    return alt.Scale(domain=TRIAGE_COLOR_DOMAIN, range=TRIAGE_COLOR_RANGE)
+
+
+def make_donut(
+    frame: pd.DataFrame,
+    name: str,
+    title: str,
+    color_scale: alt.Scale | None = None,
+) -> alt.Chart:
     return (
         alt.Chart(frame)
         .mark_arc(innerRadius=58, outerRadius=90, cornerRadius=4)
@@ -113,7 +164,11 @@ def make_donut(frame: pd.DataFrame, name: str, title: str) -> alt.Chart:
             theta=alt.Theta("count:Q", stack=True),
             color=alt.Color(
                 f"{name}:N",
-                scale=alt.Scale(range=CHART_COLORS),
+                scale=(
+                    color_scale
+                    if color_scale is not None
+                    else alt.Scale(range=CHART_COLORS)
+                ),
                 legend=alt.Legend(
                     title=None,
                     orient="bottom",
@@ -137,7 +192,7 @@ st.markdown(
     :root {
       color-scheme: light;
       --navy: #203653;
-      --blue: #079bd5;
+      --blue: #079BD5;
       --ink: #1b2d42;
       --muted: #5d6e80;
       --line: #e4ebf3;
@@ -471,8 +526,9 @@ with st.sidebar:
         triage_levels,
         key="filter_triage",
         placeholder="พิมพ์ค้นหา หรือเลือกระดับ",
-        format_func=lambda level: TRIAGE_LABELS.get(
-            int(level), f"Level {level}"
+        format_func=lambda level: (
+            f"{TRIAGE_MARKERS.get(int(level), '⚪')} "
+            f"{TRIAGE_LABELS.get(int(level), f'Level {level}')}"
         ),
         label_visibility="collapsed",
     )
@@ -609,11 +665,11 @@ if page == "หน้าแรก (ER Dashboard)":
     with kpi4:
         st.markdown(
             f"""
-            <div style="background:white;border:1px solid #e4ebf3;border-left:4px solid #8b69e8;
+            <div style="background:white;border:1px solid {COLOR_BORDER};border-left:4px solid {COLOR_PRIMARY};
             border-radius:12px;padding:14px 18px;min-height:112px;box-shadow:0 3px 12px rgba(29,55,80,.045)">
-              <div style="font-size:.82rem;color:#74869a;margin-bottom:12px">ผลการรักษา</div>
-              <div style="font-size:1.04rem;color:#1769aa;font-weight:700">Admit　{admit_count:,} ราย</div>
-              <div style="font-size:1.04rem;color:#1769aa;font-weight:700;margin-top:8px">Refer Out　{refer_count:,} ราย</div>
+              <div style="font-size:.82rem;color:{COLOR_MUTED};margin-bottom:12px">ผลการรักษา</div>
+              <div style="font-size:1.04rem;color:{COLOR_SUCCESS};font-weight:700">Admit　{admit_count:,} ราย</div>
+              <div style="font-size:1.04rem;color:{COLOR_PRIMARY};font-weight:700;margin-top:8px">Refer Out　{refer_count:,} ราย</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -642,7 +698,7 @@ if page == "หน้าแรก (ER Dashboard)":
                     point=alt.OverlayMarkDef(filled=True, size=48),
                     interpolate="monotone",
                     strokeWidth=3,
-                    color="#079bd5",
+                    color=COLOR_PRIMARY,
                 )
                 .encode(
                     x=alt.X("เวลา:N", sort=None, axis=alt.Axis(labelAngle=0, title=None)),
@@ -665,13 +721,18 @@ if page == "หน้าแรก (ER Dashboard)":
                 .reset_index()
             )
             triage_data["ระดับ"] = triage_data.apply(
-                lambda row: TRIAGE_LABELS.get(
-                    int(row["triage_level"]), str(row["triage_label"])
+                lambda row: triage_display_label(
+                    row["triage_level"], row["triage_label"]
                 ),
                 axis=1,
             )
             st.altair_chart(
-                make_donut(triage_data, "ระดับ", "ระดับคัดกรอง"),
+                make_donut(
+                    triage_data,
+                    "ระดับ",
+                    "ระดับคัดกรอง",
+                    color_scale=triage_color_scale(),
+                ),
                 width="stretch",
             )
 
@@ -738,7 +799,7 @@ if page == "หน้าแรก (ER Dashboard)":
                     point=alt.OverlayMarkDef(filled=True, size=46),
                     interpolate="monotone",
                     strokeWidth=3,
-                    color="#079bd5",
+                    color=COLOR_PRIMARY,
                 )
                 .encode(
                     x=alt.X("เดือน:T", title=None, axis=alt.Axis(format="%b %Y")),
@@ -1039,16 +1100,16 @@ elif page == "วิเคราะห์การวินิจฉัย":
     with kpi4:
         st.markdown(
             f"""
-            <div style="background:#fff;border:1px solid #e4ebf3;border-left:4px solid #f59e0b;
+            <div style="background:#fff;border:1px solid {COLOR_BORDER};border-left:4px solid {COLOR_WARNING};
             border-radius:12px;padding:14px 17px;min-height:112px;
             box-shadow:0 3px 12px rgba(29,55,80,.045)">
-              <div style="font-size:.82rem;color:#74869a;margin-bottom:10px">อันดับ 1 ที่พบมากที่สุด</div>
-              <div style="font-size:1.04rem;color:#172f4a;font-weight:750">
-                <span style="display:inline-block;background:#fff2d8;color:#b45309;
+              <div style="font-size:.82rem;color:{COLOR_MUTED};margin-bottom:10px">อันดับ 1 ที่พบมากที่สุด</div>
+              <div style="font-size:1.04rem;color:{COLOR_INK};font-weight:750">
+                <span style="display:inline-block;background:{COLOR_WARNING_BACKGROUND};color:{COLOR_WARNING_DARK};
                 padding:3px 8px;border-radius:6px;margin-right:6px">{escape_html(top_diagnosis['รหัสโรค'])}</span>
                 {escape_html(top_diagnosis['ชื่อการวินิจฉัย'])}
               </div>
-              <div style="font-size:.78rem;color:#74869a;margin-top:8px">
+              <div style="font-size:.78rem;color:{COLOR_MUTED};margin-top:8px">
                 {int(top_diagnosis['visits']):,} ครั้งในช่วงข้อมูลที่เลือก
               </div>
             </div>
@@ -1117,7 +1178,7 @@ elif page == "วิเคราะห์การวินิจฉัย":
                                 "จำนวนครั้ง (Visits)",
                                 "ผลลัพธ์ไม่พึงประสงค์",
                             ],
-                            range=["#22aee2", "#2dbf91"],
+                            range=CHART_COLORS[:2],
                         ),
                         legend=alt.Legend(orient="top", title=None),
                     ),
@@ -1173,14 +1234,7 @@ elif page == "วิเคราะห์การวินิจฉัย":
                     color=alt.Color(
                         "กลุ่มโรค:N",
                         scale=alt.Scale(
-                            range=[
-                                "#1aaee1",
-                                "#8c5ce8",
-                                "#18b887",
-                                "#f6a500",
-                                "#ed4c91",
-                                "#94a3b8",
-                            ]
+                            range=CHART_COLORS + [COLOR_NEUTRAL]
                         ),
                         legend=alt.Legend(
                             orient="bottom",
@@ -1301,15 +1355,24 @@ elif page == "ข้อมูลคลินิก":
                 .rename("จำนวน")
                 .reset_index()
             )
-            st.bar_chart(age_counts.set_index("ช่วงอายุ"), color="#8b69e8")
+            st.bar_chart(age_counts.set_index("ช่วงอายุ"), color=COLOR_PRIMARY)
     with clinical_right:
         with st.container(border=True):
             st.subheader("การคัดกรองและผลลัพธ์")
             triage_outcome = (
-                filtered.groupby(["triage_label", "adverse_outcome"], observed=True)
+                filtered.groupby(
+                    ["triage_level", "triage_label", "adverse_outcome"],
+                    observed=True,
+                )
                 .size()
                 .rename("จำนวน")
                 .reset_index()
+            )
+            triage_outcome["ระดับ"] = triage_outcome.apply(
+                lambda row: triage_display_label(
+                    row["triage_level"], row["triage_label"]
+                ),
+                axis=1,
             )
             triage_outcome["ผล"] = triage_outcome["adverse_outcome"].map(
                 {0: "ไม่พบผลลัพธ์ไม่พึงประสงค์", 1: "พบผลลัพธ์ไม่พึงประสงค์"}
@@ -1318,10 +1381,23 @@ elif page == "ข้อมูลคลินิก":
                 alt.Chart(triage_outcome)
                 .mark_bar()
                 .encode(
-                    x=alt.X("triage_label:N", title=None, sort=None),
+                    x=alt.X(
+                        "ระดับ:N",
+                        title=None,
+                        sort=TRIAGE_COLOR_DOMAIN,
+                    ),
                     y=alt.Y("จำนวน:Q", title="จำนวนราย"),
-                    color=alt.Color("ผล:N", scale=alt.Scale(range=["#12b886", "#f05270"])),
-                    tooltip=["triage_label:N", "ผล:N", alt.Tooltip("จำนวน:Q", format=",")],
+                    color=alt.Color(
+                        "ระดับ:N",
+                        scale=triage_color_scale(),
+                        legend=None,
+                    ),
+                    column=alt.Column("ผล:N", title=None),
+                    tooltip=[
+                        alt.Tooltip("ระดับ:N", title="ระดับคัดกรอง"),
+                        alt.Tooltip("ผล:N", title="ผลลัพธ์"),
+                        alt.Tooltip("จำนวน:Q", format=","),
+                    ],
                 )
                 .properties(height=330)
             )
@@ -1368,7 +1444,38 @@ elif page == "ข้อมูลคลินิก":
             .head(25)
             .rename(f"ค่าเฉลี่ย {humanize(measure)}")
         )
-        st.bar_chart(grouped, color="#12b886")
+        if grouping == "triage_label":
+            triage_by_label = (
+                filtered[["triage_level", "triage_label"]]
+                .drop_duplicates()
+                .set_index("triage_label")["triage_level"]
+            )
+            grouped_chart = grouped.rename_axis("ระดับ").reset_index()
+            grouped_chart["ระดับ"] = grouped_chart["ระดับ"].map(
+                lambda label: triage_display_label(
+                    triage_by_label.get(label), label
+                )
+            )
+            st.altair_chart(
+                alt.Chart(grouped_chart)
+                .mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5)
+                .encode(
+                    x=alt.X("ระดับ:N", sort=TRIAGE_COLOR_DOMAIN, title=None),
+                    y=alt.Y(grouped.name + ":Q", title=grouped.name),
+                    color=alt.Color(
+                        "ระดับ:N",
+                        scale=triage_color_scale(),
+                        legend=None,
+                    ),
+                    tooltip=[
+                        alt.Tooltip("ระดับ:N", title="ระดับคัดกรอง"),
+                        alt.Tooltip(grouped.name + ":Q", title=grouped.name, format=".1f"),
+                    ],
+                ),
+                width="stretch",
+            )
+        else:
+            st.bar_chart(grouped, color=COLOR_PRIMARY)
 
 elif page == "เวลารอคอย":
     st.markdown(
@@ -1419,6 +1526,12 @@ elif page == "เวลารอคอย":
             )
             .reset_index()
         )
+        triage_summary["ระดับ"] = triage_summary.apply(
+            lambda row: triage_display_label(
+                row["triage_level"], row["triage_label"]
+            ),
+            axis=1,
+        )
 
         with st.container(border=True):
             st.subheader("จุดที่ใช้เวลารอนานที่สุด และเหตุผลที่ข้อมูลบอกได้")
@@ -1441,7 +1554,9 @@ elif page == "เวลารอคอย":
                 peak_triage = triage_summary.loc[triage_summary["wait_mean"].idxmax()]
                 peak_columns[1].metric(
                     "ระดับคัดกรองที่รอเฉลี่ยนานที่สุด",
-                    str(peak_triage["triage_label"]),
+                    triage_display_label(
+                        peak_triage["triage_level"], peak_triage["triage_label"]
+                    ),
                     f"{peak_triage['wait_mean']:.1f} นาที · {peak_triage['visits']:,} visits",
                 )
             else:
@@ -1481,7 +1596,7 @@ elif page == "เวลารอคอย":
         )
         trend_chart = (
             alt.Chart(monthly_summary)
-            .mark_line(point=True, strokeWidth=2.5, color="#079bd5")
+            .mark_line(point=True, strokeWidth=2.5, color=COLOR_PRIMARY)
             .encode(
                 x=alt.X("เดือน:T", title="เดือน", axis=alt.Axis(format="%b %Y")),
                 y=alt.Y("wait_mean:Q", title="เวลารอเฉลี่ย (นาที)", scale=alt.Scale(zero=False)),
@@ -1504,7 +1619,11 @@ elif page == "เวลารอคอย":
                 st.subheader("เวลารอแยกตาม Shift")
                 shift_chart = (
                     alt.Chart(shift_summary)
-                    .mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5, color="#12b886")
+                    .mark_bar(
+                        cornerRadiusTopLeft=5,
+                        cornerRadiusTopRight=5,
+                        color=COLOR_SUCCESS,
+                    )
                     .encode(
                         x=alt.X("arrival_shift:N", title="ช่วงเวลา", sort=SHIFT_LABELS),
                         y=alt.Y("wait_mean:Q", title="เวลารอเฉลี่ย (นาที)"),
@@ -1525,16 +1644,21 @@ elif page == "เวลารอคอย":
                 st.subheader("เวลารอตามระดับคัดกรอง")
                 triage_chart = (
                     alt.Chart(triage_summary)
-                    .mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5, color="#ff9f43")
+                    .mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5)
                     .encode(
                         x=alt.X(
-                            "triage_label:N",
+                            "ระดับ:N",
                             title="ระดับคัดกรอง (Triage)",
-                            sort=alt.SortField(field="triage_level", order="ascending"),
+                            sort=TRIAGE_COLOR_DOMAIN,
                         ),
                         y=alt.Y("wait_mean:Q", title="เวลารอเฉลี่ย (นาที)"),
+                        color=alt.Color(
+                            "ระดับ:N",
+                            scale=triage_color_scale(),
+                            legend=None,
+                        ),
                         tooltip=[
-                            alt.Tooltip("triage_label:N", title="ระดับคัดกรอง"),
+                            alt.Tooltip("ระดับ:N", title="ระดับคัดกรอง"),
                             alt.Tooltip("wait_mean:Q", title="เฉลี่ย (นาที)", format=".1f"),
                             alt.Tooltip("wait_median:Q", title="มัธยฐาน (นาที)", format=".1f"),
                             alt.Tooltip("visits:Q", title="จำนวน Visits", format=","),
@@ -1562,7 +1686,11 @@ elif page == "เวลารอคอย":
             st.subheader("การกระจายเวลารอ")
             distribution_chart = (
                 alt.Chart(wait_distribution)
-                .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, color="#8b69e8")
+                .mark_bar(
+                    cornerRadiusTopLeft=4,
+                    cornerRadiusTopRight=4,
+                    color=COLOR_PURPLE,
+                )
                 .encode(
                     x=alt.X("ช่วงเวลารอ (นาที):N", title="ช่วงเวลารอ (นาที)", sort=None),
                     y=alt.Y("visits:Q", title="จำนวน Visits"),
@@ -1583,6 +1711,12 @@ elif page == "เวลารอคอย":
             .agg(wait_mean=("wait_min", "mean"), visits=("wait_min", "size"))
             .reset_index()
         )
+        heatmap_data["ระดับ"] = heatmap_data.apply(
+            lambda row: triage_display_label(
+                row["triage_level"], row["triage_label"]
+            ),
+            axis=1,
+        )
         with st.container(border=True):
             st.subheader("Heatmap: ระดับคัดกรอง × Shift")
             heatmap = (
@@ -1591,9 +1725,9 @@ elif page == "เวลารอคอย":
                 .encode(
                     x=alt.X("arrival_shift:N", title="ช่วงเวลา", sort=SHIFT_LABELS),
                     y=alt.Y(
-                        "triage_label:N",
+                        "ระดับ:N",
                         title="ระดับคัดกรอง",
-                        sort=alt.SortField(field="triage_level", order="ascending"),
+                        sort=TRIAGE_COLOR_DOMAIN,
                     ),
                     color=alt.Color(
                         "wait_mean:Q",
@@ -1601,7 +1735,7 @@ elif page == "เวลารอคอย":
                         scale=alt.Scale(scheme="tealblues"),
                     ),
                     tooltip=[
-                        alt.Tooltip("triage_label:N", title="ระดับคัดกรอง"),
+                        alt.Tooltip("ระดับ:N", title="ระดับคัดกรอง"),
                         alt.Tooltip("arrival_shift:N", title="Shift"),
                         alt.Tooltip("wait_mean:Q", title="เวลารอเฉลี่ย (นาที)", format=".1f"),
                         alt.Tooltip("visits:Q", title="จำนวน Visits", format=","),
