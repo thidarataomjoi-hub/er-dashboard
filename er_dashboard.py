@@ -146,54 +146,6 @@ def count_label(value: int) -> str:
     return f"{value:,}"
 
 
-def require_authorized_user() -> None:
-    try:
-        auth_settings = st.secrets["auth"]
-        authorization = st.secrets["authorization"]
-    except (KeyError, StreamlitSecretNotFoundError):
-        st.error(
-            "Authentication is not configured. Set the [auth] and [authorization] "
-            "sections in Streamlit Secrets before using this dashboard."
-        )
-        st.stop()
-
-    required_auth_settings = (
-        "client_id",
-        "client_secret",
-        "cookie_secret",
-        "redirect_uri",
-        "server_metadata_url",
-    )
-    if any(not auth_settings.get(key) for key in required_auth_settings):
-        st.error("Streamlit OIDC settings are incomplete. Check the [auth] section.")
-        st.stop()
-
-    allowed_emails = authorization.get("allowed_emails")
-    if (
-        not isinstance(allowed_emails, list)
-        or not allowed_emails
-        or any(not isinstance(email, str) or not email.strip() for email in allowed_emails)
-    ):
-        st.error(
-            "Access is disabled until [authorization].allowed_emails contains "
-            "at least one approved email address."
-        )
-        st.stop()
-
-    if not st.user.is_logged_in:
-        if st.button("เข้าสู่ระบบ"):
-            st.login()
-        st.stop()
-
-    user_email = st.user.get("email")
-    approved_emails = {email.strip().casefold() for email in allowed_emails}
-    if not isinstance(user_email, str) or user_email.strip().casefold() not in approved_emails:
-        st.error("บัญชีนี้ไม่ได้รับอนุญาตให้เข้าถึงแดชบอร์ด")
-        if st.button("ออกจากระบบ"):
-            st.logout()
-        st.stop()
-
-
 def set_filter_selection(state_key: str, values: list) -> None:
     st.session_state[state_key] = values
 
@@ -223,8 +175,6 @@ def make_donut(frame: pd.DataFrame, name: str, title: str) -> alt.Chart:
         .properties(height=280)
     )
 
-
-require_authorized_user()
 
 st.markdown(
     """
@@ -501,9 +451,6 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.divider()
-    if st.button("ออกจากระบบ", key="logout"):
-        st.logout()
-        st.stop()
     st.caption("ภาพรวม & การวิเคราะห์")
     pages = [
         ("หน้าแรก (ER Dashboard)", "📊  หน้าแรก (ER Dashboard)"),
