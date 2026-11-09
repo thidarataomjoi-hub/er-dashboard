@@ -13,6 +13,12 @@ import pydeck as pdk
 import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
+from er_data import (
+    CLOUD_DATA_COLUMNS,
+    SHIFT_LABELS,
+    filter_dashboard_data,
+    load_dashboard_data,
+)
 from er_security import escape_html
 
 
@@ -26,31 +32,6 @@ st.set_page_config(
 APP_DIR = Path(__file__).resolve().parent
 LOCAL_CSV = APP_DIR / "cleaned_train_supp.csv"
 LOCAL_CSV_GZ = APP_DIR / "cleaned_train_supp.csv.gz"
-CLOUD_DATA_COLUMNS = (
-    "encounter_id",
-    "arrival_year",
-    "arrival_month",
-    "arrival_day",
-    "arrival_hour",
-    "city",
-    "latitude",
-    "longitude",
-    "hospital_type",
-    "triage_level",
-    "triage_label",
-    "disposition",
-    "age",
-    "age_group",
-    "ed_los_minutes",
-    "adverse_outcome",
-    "readmission_30d",
-    "primary_icd10_code",
-    "primary_diagnosis",
-    "triage_to_physician_min",
-    "gender",
-    "arrival_mode",
-    "news2_score",
-)
 TRIAGE_LABELS = {
     1: "Level 1 · วิกฤต",
     2: "Level 2 · เร่งด่วนมาก",
@@ -67,7 +48,6 @@ DISPOSITION_LABELS = {
     "Left AMA": "ออกจากโรงพยาบาลโดยไม่สมัครใจรักษาต่อ",
 }
 CHART_COLORS = ["#26a9e0", "#12b886", "#ff9f43", "#f05270", "#8b69e8"]
-SHIFT_LABELS = ["Morning (06:00–13:59)", "Afternoon (14:00–21:59)", "Night (22:00–05:59)"]
 
 
 @st.cache_resource(show_spinner="กำลังโหลดข้อมูลจาก CSV...")
@@ -77,28 +57,7 @@ def load_data(
     usecols: tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
     del modified_time
-    data = pd.read_csv(
-        file_path,
-        dtype_backend="pyarrow",
-        low_memory=False,
-        usecols=list(usecols) if usecols else None,
-    )
-    if usecols:
-        for column in (
-            "encounter_id",
-            "city",
-            "hospital_type",
-            "triage_label",
-            "disposition",
-            "age_group",
-            "primary_icd10_code",
-            "primary_diagnosis",
-            "gender",
-            "arrival_mode",
-        ):
-            if column in data.columns:
-                data[column] = data[column].astype("category")
-    return data
+    return load_dashboard_data(file_path, usecols=usecols)
 
 
 def resolve_data_file() -> Path | None:
@@ -142,10 +101,6 @@ def humanize(column: str) -> str:
     return column.replace("_", " ").strip().title()
 
 
-def count_label(value: int) -> str:
-    return f"{value:,}"
-
-
 def set_filter_selection(state_key: str, values: list) -> None:
     st.session_state[state_key] = values
 
@@ -184,7 +139,7 @@ st.markdown(
       --navy: #203653;
       --blue: #079bd5;
       --ink: #1b2d42;
-      --muted: #74869a;
+      --muted: #5d6e80;
       --line: #e4ebf3;
       --canvas: #f1f5fa;
     }
@@ -324,6 +279,11 @@ st.markdown(
     .topbar span { color:#bcd2e5; font-size:.78rem; }
     .page-note { color:var(--muted); font-size:.84rem; margin-top:-.55rem; }
     [data-testid="stDataFrame"] { border:1px solid var(--line); border-radius:10px; }
+    @media (max-width: 640px) {
+      .block-container { padding: .75rem .75rem 1.5rem; }
+      .topbar { flex-wrap: wrap; gap: .35rem; padding: 10px 12px; }
+      .topbar span { font-size: .72rem; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -355,83 +315,14 @@ except (OSError, pd.errors.ParserError, UnicodeDecodeError, ValueError) as exc:
     st.error(f"อ่านไฟล์ CSV ไม่สำเร็จ: {exc}")
     st.stop()
 
-required_columns = {
-    "arrival_year",
-    "arrival_month",
-    "arrival_day",
-    "arrival_hour",
-    "city",
-    "latitude",
-    "longitude",
-    "hospital_type",
-    "triage_level",
-    "triage_label",
-    "disposition",
-    "age",
-    "ed_los_minutes",
-    "adverse_outcome",
-    "readmission_30d",
-    "primary_icd10_code",
-    "triage_to_physician_min",
-}
-missing_columns = sorted(required_columns.difference(data.columns))
-if missing_columns:
-    st.error(f"CSV ขาดคอลัมน์ที่จำเป็น: {', '.join(missing_columns)}")
-    st.stop()
-
-for column in (
-    "arrival_year",
-    "arrival_month",
-    "arrival_day",
-    "arrival_hour",
-    "triage_level",
-    "age",
-    "latitude",
-    "longitude",
-    "ed_los_minutes",
-    "adverse_outcome",
-    "readmission_30d",
-    "triage_to_physician_min",
-):
-    data[column] = pd.to_numeric(data[column], errors="coerce")
-
-data["arrival_date"] = pd.to_datetime(
-    {
-        "year": data["arrival_year"],
-        "month": data["arrival_month"],
-        "day": data["arrival_day"],
-    },
-    errors="coerce",
-)
-
 minimum_date = data["arrival_date"].min()
 maximum_date = data["arrival_date"].max()
-if pd.isna(minimum_date) or pd.isna(maximum_date):
-    st.error("ไม่สามารถอ่านวันที่จากคอลัมน์ arrival_year/month/day ได้")
-    st.stop()
-
 min_date = minimum_date.date()
 max_date = maximum_date.date()
 cities = sorted(data["city"].dropna().astype(str).unique().tolist())
 hospitals = sorted(data["hospital_type"].dropna().astype(str).unique().tolist())
 triage_levels = sorted(data["triage_level"].dropna().unique().tolist())
 diagnosis_codes = sorted(data["primary_icd10_code"].dropna().astype(str).unique().tolist())
-data["arrival_shift"] = pd.Series(
-    pd.Categorical(
-        data["arrival_hour"].map(
-            lambda hour: (
-                SHIFT_LABELS[0]
-                if 6 <= hour < 14
-                else SHIFT_LABELS[1]
-                if 14 <= hour < 22
-                else SHIFT_LABELS[2]
-            )
-        ),
-        categories=SHIFT_LABELS,
-        ordered=True,
-    ),
-    index=data.index,
-)
 genders = (
     sorted(data["gender"].dropna().astype(str).unique().tolist())
     if "gender" in data.columns
@@ -461,7 +352,7 @@ with st.sidebar:
         ("สำรวจข้อมูลทั้งหมด", "🗂️  สำรวจข้อมูลทั้งหมด"),
     ]
     if "active_page" not in st.session_state:
-        st.session_state.active_page = "วิเคราะห์การวินิจฉัย"
+        st.session_state.active_page = "หน้าแรก (ER Dashboard)"
     for page_value, page_label in pages:
         if st.button(
             page_label,
@@ -628,60 +519,27 @@ with st.sidebar:
         + (" · โหมด Cloud โหลดเฉพาะฟิลด์หลักเพื่อลด RAM" if REMOTE_DATA else "")
     )
 
-filtered = data[
-    data["arrival_date"].between(
-        pd.Timestamp(date_start), pd.Timestamp(date_end) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
-    )
-]
-if selected_cities:
-    filtered = filtered[filtered["city"].astype(str).isin(selected_cities)]
-if selected_hospitals:
-    filtered = filtered[
-        filtered["hospital_type"].astype(str).isin(selected_hospitals)
-    ]
-if selected_triage:
-    filtered = filtered[filtered["triage_level"].isin(selected_triage)]
-if selected_shifts:
-    filtered = filtered[filtered["arrival_shift"].isin(selected_shifts)]
-if selected_diagnosis_codes:
-    filtered = filtered[
-        filtered["primary_icd10_code"].astype(str).isin(selected_diagnosis_codes)
-    ]
-if selected_dispositions:
-    filtered = filtered[filtered["disposition"].isin(selected_dispositions)]
-if selected_genders:
-    filtered = filtered[filtered["gender"].astype(str).isin(selected_genders)]
-if selected_arrival_modes:
-    filtered = filtered[
-        filtered["arrival_mode"].astype(str).isin(selected_arrival_modes)
-    ]
+filter_options = {
+    "cities": selected_cities,
+    "hospitals": selected_hospitals,
+    "triage_levels": selected_triage,
+    "shifts": selected_shifts,
+    "diagnosis_codes": selected_diagnosis_codes,
+    "dispositions": selected_dispositions,
+    "genders": selected_genders,
+    "arrival_modes": selected_arrival_modes,
+}
+filtered = filter_dashboard_data(data, date_start, date_end, **filter_options)
 
 if page == "หน้าแรก (ER Dashboard)":
-    trend_data = data[data["arrival_year"].between(date_start.year, date_end.year)]
-    if selected_cities:
-        trend_data = trend_data[trend_data["city"].astype(str).isin(selected_cities)]
-    if selected_hospitals:
-        trend_data = trend_data[
-            trend_data["hospital_type"].astype(str).isin(selected_hospitals)
-        ]
-    if selected_triage:
-        trend_data = trend_data[trend_data["triage_level"].isin(selected_triage)]
-    if selected_shifts:
-        trend_data = trend_data[trend_data["arrival_shift"].isin(selected_shifts)]
-    if selected_diagnosis_codes:
-        trend_data = trend_data[
-            trend_data["primary_icd10_code"].astype(str).isin(selected_diagnosis_codes)
-        ]
-    if selected_dispositions:
-        trend_data = trend_data[
-            trend_data["disposition"].isin(selected_dispositions)
-        ]
-    if selected_genders:
-        trend_data = trend_data[trend_data["gender"].astype(str).isin(selected_genders)]
-    if selected_arrival_modes:
-        trend_data = trend_data[
-            trend_data["arrival_mode"].astype(str).isin(selected_arrival_modes)
-        ]
+    trend_start = date_start.replace(month=1, day=1)
+    trend_end = date_end.replace(month=12, day=31)
+    trend_data = filter_dashboard_data(
+        data,
+        trend_start,
+        trend_end,
+        **filter_options,
+    )
 
 st.markdown(
     f"""
