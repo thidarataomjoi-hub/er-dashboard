@@ -157,6 +157,7 @@ def make_donut(
     title: str,
     color_scale: alt.Scale | None = None,
     legend_columns: int = 2,
+    show_legend: bool = True,
 ) -> alt.Chart:
     return (
         alt.Chart(frame)
@@ -170,14 +171,18 @@ def make_donut(
                     if color_scale is not None
                     else alt.Scale(range=CHART_COLORS)
                 ),
-                legend=alt.Legend(
-                    title=None,
-                    orient="bottom",
-                    columns=legend_columns,
-                    columnPadding=14,
-                    rowPadding=5,
-                    labelLimit=160,
-                    symbolType="circle",
+                legend=(
+                    alt.Legend(
+                        title=None,
+                        orient="bottom",
+                        columns=legend_columns,
+                        columnPadding=14,
+                        rowPadding=5,
+                        labelLimit=160,
+                        symbolType="circle",
+                    )
+                    if show_legend
+                    else None
                 ),
             ),
             tooltip=[
@@ -336,6 +341,40 @@ st.markdown(
       background: #0c638f;
       border-color: #1b95c5;
       color: white;
+    }
+    [data-testid="stSidebar"] .st-key-select_all_cities button,
+    [data-testid="stSidebar"] .st-key-clear_cities button,
+    [data-testid="stSidebar"] .st-key-select_all_hospitals button,
+    [data-testid="stSidebar"] .st-key-clear_hospitals button,
+    [data-testid="stSidebar"] .st-key-select_all_triage button,
+    [data-testid="stSidebar"] .st-key-clear_triage button,
+    [data-testid="stSidebar"] .st-key-select_all_shifts button,
+    [data-testid="stSidebar"] .st-key-clear_shifts button {
+      background: #fff !important;
+      border: 1px solid #91A8C0 !important;
+      color: #000 !important;
+    }
+    [data-testid="stSidebar"] .st-key-select_all_cities button *,
+    [data-testid="stSidebar"] .st-key-clear_cities button *,
+    [data-testid="stSidebar"] .st-key-select_all_hospitals button *,
+    [data-testid="stSidebar"] .st-key-clear_hospitals button *,
+    [data-testid="stSidebar"] .st-key-select_all_triage button *,
+    [data-testid="stSidebar"] .st-key-clear_triage button *,
+    [data-testid="stSidebar"] .st-key-select_all_shifts button *,
+    [data-testid="stSidebar"] .st-key-clear_shifts button * {
+      color: #000 !important;
+      -webkit-text-fill-color: #000 !important;
+    }
+    [data-testid="stSidebar"] .st-key-select_all_cities button:hover,
+    [data-testid="stSidebar"] .st-key-clear_cities button:hover,
+    [data-testid="stSidebar"] .st-key-select_all_hospitals button:hover,
+    [data-testid="stSidebar"] .st-key-clear_hospitals button:hover,
+    [data-testid="stSidebar"] .st-key-select_all_triage button:hover,
+    [data-testid="stSidebar"] .st-key-clear_triage button:hover,
+    [data-testid="stSidebar"] .st-key-select_all_shifts button:hover,
+    [data-testid="stSidebar"] .st-key-clear_shifts button:hover {
+      background: #E8F2FA !important;
+      border-color: #526981 !important;
     }
     .block-container { max-width: 1680px; padding: 1rem 1.4rem 2rem; }
     h1, h2, h3, p, label { color: var(--ink); }
@@ -749,9 +788,23 @@ if page == "หน้าแรก (ER Dashboard)":
                     "ระดับ",
                     "ระดับคัดกรอง",
                     color_scale=triage_color_scale(),
-                    legend_columns=3,
+                    show_legend=False,
                 ),
                 width="stretch",
+            )
+            st.markdown(
+                "<div style='display:flex;flex-wrap:wrap;justify-content:center;"
+                "column-gap:12px;row-gap:6px;margin:-8px 0 8px'>"
+                + "".join(
+                    "<div style='flex:0 1 30%;min-width:145px;display:flex;"
+                    "align-items:center;gap:6px;font-size:.78rem;color:#5D6E80'>"
+                    f"<span style='width:10px;height:10px;flex:0 0 10px;"
+                    f"border-radius:50%;background:{TRIAGE_COLORS[level]}'></span>"
+                    f"<span>{TRIAGE_LABELS[level]}</span></div>"
+                    for level in TRIAGE_LABELS
+                )
+                + "</div>",
+                unsafe_allow_html=True,
             )
 
     outcome_column, monthly_column = st.columns([1, 1.7])
