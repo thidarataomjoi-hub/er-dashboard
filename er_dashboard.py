@@ -42,7 +42,7 @@ CHART_COLORS = ["#26a9e0", "#12b886", "#ff9f43", "#f05270", "#8b69e8"]
 SHIFT_LABELS = ["Morning (06:00–13:59)", "Afternoon (14:00–21:59)", "Night (22:00–05:59)"]
 
 
-@st.cache_data(show_spinner="กำลังโหลดข้อมูลจาก CSV...")
+@st.cache_resource(show_spinner="กำลังโหลดข้อมูลจาก CSV...")
 def load_data(file_path: str, modified_time: float) -> pd.DataFrame:
     del modified_time
     return pd.read_csv(file_path, dtype_backend="pyarrow", low_memory=False)
@@ -589,29 +589,32 @@ if selected_arrival_modes:
         filtered["arrival_mode"].astype(str).isin(selected_arrival_modes)
     ]
 
-trend_data = data[data["arrival_year"].between(date_start.year, date_end.year)]
-if selected_cities:
-    trend_data = trend_data[trend_data["city"].astype(str).isin(selected_cities)]
-if selected_hospitals:
-    trend_data = trend_data[
-        trend_data["hospital_type"].astype(str).isin(selected_hospitals)
-    ]
-if selected_triage:
-    trend_data = trend_data[trend_data["triage_level"].isin(selected_triage)]
-if selected_shifts:
-    trend_data = trend_data[trend_data["arrival_shift"].isin(selected_shifts)]
-if selected_diagnosis_codes:
-    trend_data = trend_data[
-        trend_data["primary_icd10_code"].astype(str).isin(selected_diagnosis_codes)
-    ]
-if selected_dispositions:
-    trend_data = trend_data[trend_data["disposition"].isin(selected_dispositions)]
-if selected_genders:
-    trend_data = trend_data[trend_data["gender"].astype(str).isin(selected_genders)]
-if selected_arrival_modes:
-    trend_data = trend_data[
-        trend_data["arrival_mode"].astype(str).isin(selected_arrival_modes)
-    ]
+if page == "หน้าแรก (ER Dashboard)":
+    trend_data = data[data["arrival_year"].between(date_start.year, date_end.year)]
+    if selected_cities:
+        trend_data = trend_data[trend_data["city"].astype(str).isin(selected_cities)]
+    if selected_hospitals:
+        trend_data = trend_data[
+            trend_data["hospital_type"].astype(str).isin(selected_hospitals)
+        ]
+    if selected_triage:
+        trend_data = trend_data[trend_data["triage_level"].isin(selected_triage)]
+    if selected_shifts:
+        trend_data = trend_data[trend_data["arrival_shift"].isin(selected_shifts)]
+    if selected_diagnosis_codes:
+        trend_data = trend_data[
+            trend_data["primary_icd10_code"].astype(str).isin(selected_diagnosis_codes)
+        ]
+    if selected_dispositions:
+        trend_data = trend_data[
+            trend_data["disposition"].isin(selected_dispositions)
+        ]
+    if selected_genders:
+        trend_data = trend_data[trend_data["gender"].astype(str).isin(selected_genders)]
+    if selected_arrival_modes:
+        trend_data = trend_data[
+            trend_data["arrival_mode"].astype(str).isin(selected_arrival_modes)
+        ]
 
 st.markdown(
     f"""
